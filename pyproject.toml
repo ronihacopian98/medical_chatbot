@@ -1,0 +1,75 @@
+[project]
+name = "medical-chatbot"
+version = "0.1.0"
+description = "AI-powered medical chatbot with RAG and web search capabilities"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    # LLM & orchestration
+    "langchain>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-ollama>=0.2.0",
+    "langgraph>=0.2.0",
+    # RAG
+    "langchain-qdrant>=0.2.0",
+    "langchain-text-splitters>=0.3.0",
+    "qdrant-client>=1.12.0",
+    "pypdf>=5.0.0",
+    # Web search
+    "langchain-tavily>=0.1.0",
+    # Configuration
+    "pydantic-settings>=2.6.0",
+    # Frontend
+    "streamlit>=1.40.0",
+    "requests>=2.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",           # Async test client for FastAPI
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+# --- Tool Configurations ---
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort (import sorting)
+    "UP",   # pyupgrade (modern Python syntax)
+    "B",    # flake8-bugbear (common bugs)
+    "SIM",  # flake8-simplify
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["langchain.*", "langchain_community.*", "langchain_ollama.*", "langchain_qdrant.*", "langchain_tavily.*", "langgraph.*", "qdrant_client.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
