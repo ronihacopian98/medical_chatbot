@@ -1,0 +1,77 @@
+services:
+
+  # --- FastAPI backend ---
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: medical-chatbot-api
+    ports:
+      - "9000:9000"
+    environment:
+      # In Docker, services talk to each other by service name
+      # "ollama" and "qdrant" are the service names below
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - QDRANT_URL=http://qdrant:6333
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - DEBUG=false
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:9000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # --- Streamlit frontend ---
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: medical-chatbot-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      # Talk to the API container by service name
+      - API_URL=http://api:9000/api/v1/chat
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # --- Qdrant vector database ---
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: medical-chatbot-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      # Persist data so it survives container restarts
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/6333"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # --- Ollama LLM server ---
+  ollama:
+    image: ollama/ollama:latest
+    container_name: medical-chatbot-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persist downloaded models so we don't re-download on restart
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+# Named volumes — Docker manages these
+# Data persists even if containers are deleted
+volumes:
+  qdrant_data:
+  ollama_data:

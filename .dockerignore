@@ -1,0 +1,25 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+
+# Local env
+.env
+
+# Data (PDFs are not part of the image)
+data/
+
+# Docs
+*.md
+
+# IDE
+.vscode/
+.idea/

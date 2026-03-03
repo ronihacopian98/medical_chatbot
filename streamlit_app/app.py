@@ -1,9 +1,12 @@
+import os
 import uuid
 
 import requests
 import streamlit as st
 
-API_URL = "http://localhost:9000/api/v1/chat"
+# In Docker: reads API_URL env var (set to http://api:9000/api/v1/chat)
+# Locally: falls back to localhost
+API_URL = os.getenv("API_URL", "http://localhost:9000/api/v1/chat")
 
 # --- Page config ---
 st.set_page_config(
