@@ -1,87 +1,68 @@
 from langgraph.graph import END, StateGraph
 
 from app.core.nodes import (
+    add_disclaimer,
+    check_hallucination,
+    check_safety,
     generate_response,
+    grade_documents,
+    rerank_documents,
     retrieve_documents,
-    route_query,
     web_search,
 )
 from app.core.state import GraphState
 
 
-def _decide_route(state: GraphState) -> str:
-    """Conditional edge: based on the route, decide which nodes to run next.
-
-    This is the "traffic controller" of the graph.
-    After the router decides the strategy, this function
-    tells LangGraph which path to take.
-    """
-    route = state["route"]
-    if route == "rag_only":
-        return "retrieve"
-    elif route == "web_only":
+def _needs_web_search(state: GraphState) -> str:
+    """After grading: does the answer need web search too?"""
+    if state["needs_web_search"]:
         return "web_search"
-    else:
-        return "both"
+    return "generate"
 
 
 def build_graph() -> StateGraph:
-    """Build and compile the LangGraph workflow.
+    """Build and compile the full production LangGraph workflow.
 
-    The graph looks like this:
-
-    [route_query]
-         │
-         ├── "retrieve"  → [retrieve_documents] → [generate_response] → END
-         │
-         ├── "web_search" → [web_search] → [generate_response] → END
-         │
-         └── "both" → [retrieve_documents] → [web_search] → [generate_response] → END
-
-    Returns a compiled graph you can call with .invoke()
+    Flow:
+    1. Search books (Qdrant)
+    2. Rerank results (keep only relevant chunks)
+    3. Grade (are results good enough?)
+    4. Maybe search web (Tavily)
+    5. Generate answer (LLM)
+    6. Check hallucinations (is answer grounded in sources?)
+    7. Check safety (no dangerous medical advice?)
+    8. Add disclaimer + handle bad answers
     """
-    # Create the graph with our state schema
     graph = StateGraph(GraphState)
 
-    # Add nodes (the workers)
-    graph.add_node("route_query", route_query)
+    # Add all nodes
     graph.add_node("retrieve_documents", retrieve_documents)
+    graph.add_node("rerank_documents", rerank_documents)
+    graph.add_node("grade_documents", grade_documents)
     graph.add_node("web_search", web_search)
     graph.add_node("generate_response", generate_response)
+    graph.add_node("check_hallucination", check_hallucination)
+    graph.add_node("check_safety", check_safety)
+    graph.add_node("add_disclaimer", add_disclaimer)
 
-    # Set the entry point — always start with routing
-    graph.set_entry_point("route_query")
+    # Wire it all together
+    graph.set_entry_point("retrieve_documents")
+    graph.add_edge("retrieve_documents", "rerank_documents")
+    graph.add_edge("rerank_documents", "grade_documents")
 
-    # Add conditional edges — the "if/else" logic
     graph.add_conditional_edges(
-        "route_query",  # After this node...
-        _decide_route,  # ...run this function to decide where to go
-        {
-            # If it returns "retrieve", go to retrieve_documents
-            "retrieve": "retrieve_documents",
-            # If it returns "web_search", go to web_search
-            "web_search": "web_search",
-            # If it returns "both", go to retrieve first
-            "both": "retrieve_documents",
-        },
-    )
-
-    # After retrieve_documents:
-    # - If route was "both", also do web search
-    # - Otherwise, go straight to generate
-    graph.add_conditional_edges(
-        "retrieve_documents",
-        lambda state: "web_search" if state["route"] == "rag_and_web" else "generate",
+        "grade_documents",
+        _needs_web_search,
         {
             "web_search": "web_search",
             "generate": "generate_response",
         },
     )
 
-    # After web_search, always generate
     graph.add_edge("web_search", "generate_response")
-
-    # After generate, we're done
-    graph.add_edge("generate_response", END)
+    graph.add_edge("generate_response", "check_hallucination")
+    graph.add_edge("check_hallucination", "check_safety")
+    graph.add_edge("check_safety", "add_disclaimer")
+    graph.add_edge("add_disclaimer", END)
 
     return graph.compile()
